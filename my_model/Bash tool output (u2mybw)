@@ -1,0 +1,162 @@
+================================================================================
+ANALYZING DIMENSIONAL VARIABILITY
+================================================================================
+
+Analyzing: t15.2023.08.11
+
+Analyzing: t15.2023.08.13
+
+Analyzing: t15.2023.08.18
+
+Analyzing: t15.2023.08.20
+
+Analyzing: t15.2023.08.25
+
+================================================================================
+BRAIN RECORDING TIMESTEPS (T_brain)
+================================================================================
+Mean:   775.3
+Std:    268.5
+Min:    321
+Max:    1600
+Median: 755.5
+
+================================================================================
+AUDIO EMBEDDING TIMESTEPS (T_audio) - ESTIMATED
+================================================================================
+Mean:   118.2
+Std:    44.2
+Min:    40
+Max:    220
+Median: 120.0
+
+================================================================================
+DIMENSIONAL MISMATCH
+================================================================================
+Ratio (T_brain / T_audio):
+  Mean:   6.74x
+  Std:    1.12x
+  Min:    5.12x
+  Max:    10.95x
+  Median: 6.37x
+
+================================================================================
+EXAMPLE TRIALS
+================================================================================
+
+Trial 1:
+  Text: "Bring it closer."
+  Words: 3
+  Estimated duration: 1.20s
+  T_brain: 321
+  T_audio (estimated): 60
+  Ratio: 5.35x
+
+Trial 2:
+  Text: "My family is closer."
+  Words: 4
+  Estimated duration: 1.60s
+  T_brain: 481
+  T_audio (estimated): 80
+  Ratio: 6.01x
+
+Trial 3:
+  Text: "What do they like?"
+  Words: 4
+  Estimated duration: 1.60s
+  T_brain: 480
+  T_audio (estimated): 80
+  Ratio: 6.00x
+
+Trial 4:
+  Text: "How is that good?"
+  Words: 4
+  Estimated duration: 1.60s
+  T_brain: 502
+  T_audio (estimated): 80
+  Ratio: 6.27x
+
+Trial 5:
+  Text: "Need help here?"
+  Words: 3
+  Estimated duration: 1.20s
+  T_brain: 402
+  T_audio (estimated): 60
+  Ratio: 6.70x
+
+Trial 6:
+  Text: "Yes, you have it right."
+  Words: 5
+  Estimated duration: 2.00s
+  T_brain: 575
+  T_audio (estimated): 100
+  Ratio: 5.75x
+
+Trial 7:
+  Text: "I tell you my family is not hungry."
+  Words: 8
+  Estimated duration: 3.20s
+  T_brain: 890
+  T_audio (estimated): 160
+  Ratio: 5.56x
+
+Trial 8:
+  Text: "Bring my computer here, please."
+  Words: 5
+  Estimated duration: 2.00s
+  T_brain: 589
+  T_audio (estimated): 100
+  Ratio: 5.89x
+
+Trial 9:
+  Text: "They hope that."
+  Words: 3
+  Estimated duration: 1.20s
+  T_brain: 445
+  T_audio (estimated): 60
+  Ratio: 7.42x
+
+Trial 10:
+  Text: "You like it?"
+  Words: 3
+  Estimated duration: 1.20s
+  T_brain: 414
+  T_audio (estimated): 60
+  Ratio: 6.90x
+
+================================================================================
+ANALYSIS & RECOMMENDATIONS
+================================================================================
+
+⚠️  SIGNIFICANT MISMATCH: Brain recordings are 6.7x longer!
+
+Why this happens:
+  - Brain recordings capture the entire speaking process
+  - Audio embeddings represent compressed semantic content
+  - TTS-generated audio is typically shorter than neural activity
+
+IMPLICATIONS for lines 34-37:
+  - You CANNOT directly compare T_brain and T_audio without alignment
+  - MSE loss REQUIRES same dimensions: loss = (pred - target)²
+  - You MUST interpolate/align sequences before computing loss
+
+SOLUTIONS:
+  1. ✓ Interpolate audio to match brain length (current approach)
+     - F.interpolate(audio, size=T_brain)
+     - Pro: Preserves all brain information
+     - Con: Audio embeddings are upsampled (may be redundant)
+
+  2. ✓ Interpolate brain to match audio length
+     - F.interpolate(brain, size=T_audio)
+     - Pro: Matches natural audio resolution
+     - Con: Loses temporal detail in brain signal
+
+  3. ✓ Use DTW (Dynamic Time Warping)
+     - Finds optimal non-linear alignment
+     - Pro: More flexible alignment
+     - Con: Computationally expensive, harder to backprop
+
+  4. ✓ Downsample brain with pooling
+     - Average/max pooling over time
+     - Pro: Reduces redundancy, learns invariant features
+     - Con: Fixed downsampling ratio

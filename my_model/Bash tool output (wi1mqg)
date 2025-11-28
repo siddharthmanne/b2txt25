@@ -1,0 +1,170 @@
+================================================================================
+QWEN2-AUDIO-7B ARCHITECTURE DIMENSIONS
+================================================================================
+
+📊 AUDIO PROCESSING PATH:
+  Raw Audio → Whisper Encoder → AudioTower → Projector → LLM
+
+  1. Whisper Encoder (frozen, from openai/whisper-large-v3)
+     Input:  Audio waveform (16kHz)
+     Output: [batch, T_audio, 1280]
+     → This is the AudioTower output
+
+  2. Multi-Modal Projector (frozen)
+     Input:  [batch, T_audio, 1280]
+     Output: [batch, T_audio, 4096]
+     → Projects to LLM embedding space
+
+  3. Qwen2-7B Language Model (frozen)
+     Input:  [batch, T, 4096]
+     Output: [batch, T, vocab_size=152064]
+
+================================================================================
+YOUR BRAIN ENCODER PATHWAY
+================================================================================
+
+  Raw Brain → Day Layers → GRU → Projector → (alignment/LLM)
+
+  1. Raw Brain Data
+     Shape: [batch, T_brain, 512]
+     → 512 neural features per timestep
+
+  2. Day-Specific Layers
+     Shape: [batch, T_brain, 512] → [batch, T_brain, 512]
+     → Linear transform + bias per day (calibration)
+
+  3. GRU Encoder (n_layers=5, n_units=768)
+     Shape: [batch, T_brain, 512] → [batch, T_brain, 768]
+     → Temporal modeling
+
+  4. Projector
+     Shape: [batch, T_brain, 768] → [batch, T_brain, ???]
+     → PROJECT TO WHAT DIMENSION?
+
+================================================================================
+CRITICAL QUESTION: WHAT SHOULD PROJECTOR OUTPUT?
+================================================================================
+
+You have TWO objectives:
+
+  Objective 1: Align with AudioTower embeddings
+    → Brain should match AudioTower output: 1280 dims
+    → For alignment loss: MSE(brain_emb, audio_emb)
+
+  Objective 2: Feed into LLM Decoder
+    → LLM expects input from Projector: 4096 dims
+    → But you're using the frozen Qwen Projector: 1280 → 4096
+
+DECISION TREE:
+
+  Option A: Brain Encoder → 1280 dims (CURRENT)
+    ✓ Aligns directly with AudioTower output
+    ✓ Can compute alignment loss easily
+    ✓ Then pass through frozen Qwen Projector (1280 → 4096) for LLM
+    ✓ MATCHES YOUR CURRENT ARCHITECTURE
+
+  Option B: Brain Encoder → 4096 dims
+    ✗ Can't align with AudioTower (1280 != 4096)
+    ✗ Would need to also project AudioTower (1280 → 4096)
+    ✗ Bypasses the frozen Qwen Projector
+    ✗ NOT RECOMMENDED
+
+================================================================================
+RECOMMENDATION
+================================================================================
+
+✅ KEEP: Brain Encoder → 1280 dimensions
+
+Why?
+  1. You want to align brain with AUDIO, not with LLM embeddings
+  2. AudioTower outputs 1280 dims (Whisper-large-v3)
+  3. Qwen's frozen Projector handles 1280 → 4096 conversion
+  4. You get the benefit of Qwen's learned projection
+
+Architecture:
+  Brain [512] → GRU [768] → Projector [1280]
+                                  ↓
+                         Alignment Loss (with Audio [1280])
+                                  ↓
+                    Qwen Projector [1280 → 4096]
+                                  ↓
+                         LLM [4096 → text]
+
+================================================================================
+DOES INCREASING 512→1280 MAKE SENSE?
+================================================================================
+
+YES! Here's why:
+
+  Input: 512 dimensions
+    - 512 electrode features
+    - Each dimension is noisy, redundant
+    - Local information, not semantic
+
+  GRU: 768 hidden units
+    - Integrates temporal context
+    - Learns patterns over time
+    - Extracts higher-level features
+    - 768 > 512: EXPANSION happens here
+
+  Projector: 768 → 1280
+    - Further expansion for semantic space
+    - 1280 dims matches rich audio embedding space
+    - Provides capacity for complex alignment
+
+This is NOT just 'upsampling' - it's FEATURE EXTRACTION:
+  - 512 dims: Raw, noisy neural signals
+  - 768 dims: Temporal features from GRU
+  - 1280 dims: Semantic features for alignment
+
+Compare to computer vision:
+  - Image: 224x224x3 = 150k input dims
+  - ResNet: Compresses to 2048 dims
+  - Then expands to 512 dims for classification
+  → Expansion after feature extraction is NORMAL!
+
+================================================================================
+SHOULD YOU SQUASH LAST 2 DIMENSIONS?
+================================================================================
+
+NO! Keep GRU [768] → Projector [1280] separate:
+
+  Why separate?
+    1. GRU learns temporal dynamics (recurrent)
+    2. Projector learns semantic mapping (feedforward)
+    3. Different roles, different inductive biases
+
+  Alternative (squashed):
+    GRU [1280] → No Projector
+    ✗ GRU is overkill for just dimension matching
+    ✗ Harder to train (more parameters in recurrent layers)
+    ✗ Loses the interpretability of separate stages
+
+  Current (separate):
+    GRU [768] → Linear [1280]
+    ✓ GRU focuses on temporal modeling
+    ✓ Projector focuses on space alignment
+    ✓ Easier to tune/debug each component
+    ✓ RECOMMENDED
+
+================================================================================
+FINAL ARCHITECTURE VALIDATION
+================================================================================
+
+Stage 1: Brain Encoding
+  [batch, T, 512] → Day Layers → [batch, T, 512]
+  [batch, T, 512] → GRU(768)  → [batch, T, 768]
+  [batch, T, 768] → Linear    → [batch, T, 1280] ✓
+
+Stage 2: Audio Encoding (frozen)
+  text → TTS → audio → Whisper → [batch, T, 1280] ✓
+
+Stage 3: Alignment
+  Brain [1280] ⟷ Audio [1280]
+  → MSE Loss ✓
+
+Stage 4: LLM Decoding (frozen)
+  Brain [1280] → Qwen Proj → [1280 → 4096]
+  [batch, T, 4096] → Qwen LLM → text ✓
+
+ALL DIMENSIONS ALIGNED! ✅

@@ -1,0 +1,142 @@
+# Brain-to-Text Model Training Configuration
+# Based on baseline RNN model configuration with adaptations for audio-LLM alignment
+
+model:
+  n_input_features: 512  # 2 features per electrode × 256 electrodes
+  n_units: 768  # GRU hidden units
+  rnn_dropout: 0.4  # dropout rate for GRU layers
+  rnn_trainable: true  # whether GRU layers are trainable
+  n_layers: 5  # number of GRU layers
+  patch_size: 14  # size of input patches (timesteps)
+  patch_stride: 4  # stride for input patches
+  audio_embedding_dim: 1280  # Qwen AudioTower output dimension
+
+  input_network:
+    n_input_layers: 1  # one network per day
+    input_layer_sizes:
+    - 512  # size matches neural_dim
+    input_trainable: true  # whether input layer is trainable
+    input_layer_dropout: 0.2  # dropout rate for input layer
+
+  # Audio-LLM components
+  t2a_model_id: "facebook/mms-tts-eng"  # Text-to-Audio model
+  a2t_model_id: "Qwen/Qwen2-Audio-7B-Instruct"  # Audio-to-Text LLM
+
+# Training parameters
+gpu_number: '0'  # GPU to use (string format)
+mode: train
+use_amp: true  # automatic mixed precision (bfloat16)
+
+output_dir: trained_models/brain2text_audio_llm  # output directory
+checkpoint_dir: trained_models/brain2text_audio_llm/checkpoint  # checkpoint directory
+init_from_checkpoint: false  # load from checkpoint
+init_checkpoint_path: null  # checkpoint path if loading
+save_best_checkpoint: true  # save best checkpoint
+save_all_val_steps: false  # save all validation checkpoints
+save_final_model: true  # save final model
+save_val_metrics: true  # save validation metrics
+early_stopping: true  # use early stopping
+early_stopping_val_steps: 10  # stop if no improvement for N validation steps
+
+num_training_batches: 120000  # total training batches
+lr_scheduler_type: cosine  # 'cosine' or 'linear'
+
+# Learning rates
+lr_max: 0.005  # max LR for main model
+lr_min: 0.0001  # min LR for main model
+lr_decay_steps: 120000  # LR decay duration
+lr_warmup_steps: 1000  # warmup steps
+lr_max_day: 0.005  # max LR for day-specific layers
+lr_min_day: 0.0001  # min LR for day-specific layers
+lr_decay_steps_day: 120000  # LR decay for day layers
+lr_warmup_steps_day: 1000  # warmup for day layers
+
+# Optimizer parameters
+beta0: 0.9  # Adam beta1
+beta1: 0.999  # Adam beta2
+epsilon: 0.1  # Adam epsilon (unusual but matches baseline)
+weight_decay: 0.001  # weight decay for main model
+weight_decay_day: 0  # no weight decay for day-specific layers
+seed: 10  # random seed
+grad_norm_clip_value: 10  # gradient clipping
+
+# Loss weights
+alpha: 1.0  # alignment loss weight (brain ↔ audio)
+beta: 1.0  # LLM loss weight (text generation)
+
+# Logging and evaluation
+batches_per_train_log: 200  # log every N batches
+batches_per_val_step: 2000  # validate every N batches
+log_individual_day_val_metrics: true  # log per-day metrics
+save_val_logits: false  # don't save logits (too large for LLM)
+save_val_data: false  # don't save validation data
+
+# Dataset configuration
+dataset:
+  # Data augmentation (applied on GPU)
+  data_transforms:
+    white_noise_std: 1.0  # white noise augmentation
+    constant_offset_std: 0.2  # constant offset per trial
+    random_walk_std: 0.0  # random walk noise (disabled)
+    random_walk_axis: -1  # axis for random walk
+    static_gain_std: 0.0  # static gain noise (disabled)
+    random_cut: 3  # randomly cut 0-3 timesteps from start
+    smooth_kernel_size: 100  # Gaussian smoothing kernel size
+    smooth_data: true  # CRITICAL: always smooth neural data
+    smooth_kernel_std: 2  # Gaussian kernel std dev
+
+  neural_dim: 512  # neural data dimensionality
+  batch_size: 64  # batch size
+  days_per_batch: 4  # mix data from N days per batch
+  seed: 1  # dataset random seed
+  num_dataloader_workers: 0  # workers for dataloader (0 for audio generation)
+  loader_shuffle: false  # dataset handles shuffling internally
+  must_include_days: null  # force specific days in each batch
+  feature_subset: null  # use subset of features (null = all)
+
+  dataset_dir: /Users/Siddharth/nejm-brain-to-text/data/hdf5_data_final
+  bad_trials_dict: null  # dictionary of trials to exclude
+
+  # Recording sessions to use
+  sessions:
+  - t15.2023.08.11
+  - t15.2023.08.13
+  - t15.2023.08.18
+  - t15.2023.08.20
+  - t15.2023.08.25
+  - t15.2023.08.27
+  - t15.2023.09.01
+  - t15.2023.09.03
+  - t15.2023.09.24
+  - t15.2023.09.29
+  - t15.2023.10.01
+  - t15.2023.10.06
+  - t15.2023.10.08
+  - t15.2023.10.13
+  - t15.2023.10.15
+  - t15.2023.10.20
+  - t15.2023.10.22
+  - t15.2023.11.03
+  - t15.2023.11.04
+
+  # Validation data probability (0 = skip, 1 = include)
+  dataset_probability_val:
+  - 1  # t15.2023.08.11
+  - 1  # t15.2023.08.13
+  - 1  # t15.2023.08.18
+  - 1  # t15.2023.08.20
+  - 1  # t15.2023.08.25
+  - 1  # t15.2023.08.27
+  - 1  # t15.2023.09.01
+  - 1  # t15.2023.09.03
+  - 1  # t15.2023.09.24
+  - 1  # t15.2023.09.29
+  - 1  # t15.2023.10.01
+  - 1  # t15.2023.10.06
+  - 1  # t15.2023.10.08
+  - 1  # t15.2023.10.13
+  - 1  # t15.2023.10.15
+  - 1  # t15.2023.10.20
+  - 1  # t15.2023.10.22
+  - 1  # t15.2023.11.03
+  - 1  # t15.2023.11.04
