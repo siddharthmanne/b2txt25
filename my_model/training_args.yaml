@@ -54,7 +54,7 @@ lr_warmup_steps_day: 1000  # warmup for day layers
 # Optimizer parameters
 beta0: 0.9  # Adam beta1
 beta1: 0.999  # Adam beta2
-epsilon: 0.1  # Adam epsilon (unusual but matches baseline)
+epsilon: 0.00000001  # Adam epsilon 
 weight_decay: 0.001  # weight decay for main model
 weight_decay_day: 0  # no weight decay for day-specific layers
 seed: 10  # random seed
@@ -94,7 +94,7 @@ dataset:
   must_include_days: null  # force specific days in each batch
   feature_subset: null  # use subset of features (null = all)
 
-  dataset_dir: /Users/Siddharth/nejm-brain-to-text/data/hdf5_data_final
+  dataset_dir: /home/Siddharth/data/hdf5_data_final
   bad_trials_dict: null  # dictionary of trials to exclude
 
   # Recording sessions to use

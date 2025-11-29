@@ -10,7 +10,7 @@ class BrainToTextDataset(Dataset):
     '''
     Dataset for brain-to-text data
     
-    Returns an entire batch of data instead of a single example
+    Returns an entire batch of data instead of a single exampl
     '''
 
     def __init__(

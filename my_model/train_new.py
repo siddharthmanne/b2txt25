@@ -117,8 +117,8 @@ class Brain2TextTrainer:
         )
 
         # Use torch.compile for 2-3x speedup
-        self.logger.info("Using torch.compile for speedup")
-        self.model = torch.compile(self.model)
+        # self.logger.info("Using torch.compile for speedup")
+        # self.model = torch.compile(self.model)
 
         self.logger.info(f"Initialized Brain2Text model")
 
@@ -166,7 +166,7 @@ class Brain2TextTrainer:
 
         # Train dataset and dataloader
         self.train_dataset = BrainToTextDataset(
-            trial_indicies==train_trials,
+            trial_indicies=train_trials,
             split='train',
             days_per_batch=self.args['dataset']['days_per_batch'],
             n_batches=self.args['num_training_batches'],
@@ -362,56 +362,79 @@ class Brain2TextTrainer:
 
             start_time = time.time()
 
+            # ===== Load batch data from dataset =====
             # Move data to device
-            features = batch['input_features'].to(self.device)
-            n_time_steps = batch['n_time_steps'].to(self.device)
-            day_indicies = batch['day_indicies'].to(self.device)
+            features = batch['input_features'].to(self.device)  # [batch, time, neural_dim=512]
+            n_time_steps = batch['n_time_steps'].to(self.device)  # [batch] - actual timesteps per trial
+            day_indicies = batch['day_indicies'].to(self.device)  # [batch] - day index for each trial
 
-            # Decode transcriptions
-            transcriptions_raw = batch['transcriptions']
-            target_texts = []
+            # Decode transcriptions from byte strings
+            transcriptions_raw = batch['transcriptions']  # [batch, max_text_len] - byte-encoded strings
+            target_texts = []  # Will be list of batch_size strings
             for j in range(transcriptions_raw.shape[0]):
                 text = bytes(transcriptions_raw[j].cpu().numpy()).decode('utf-8').strip()
-                target_texts.append(text)
+                target_texts.append(text)  # e.g., "hello world"
 
+            # ===== Mixed precision training with autocast =====
             # Use autocast for efficiency (AMP with bfloat16)
             with torch.autocast(device_type="cuda", enabled=self.args['use_amp'], dtype=torch.bfloat16):
-                # Apply data augmentations ON GPU
+                # Apply data augmentations ON GPU (smoothing, noise, etc.)
                 features, n_time_steps = apply_data_augmentations(
                     features, n_time_steps, mode='train',
                     transform_args=self.transform_args, device=self.device
                 )
+                # features: [batch, time, neural_dim=512] - augmented
+                # n_time_steps: [batch] - may be adjusted by random_cut
 
                 # Calculate adjusted sequence lengths after patching
                 # This is CRITICAL: patching changes the temporal dimension
+                # Patching concatenates adjacent timesteps: [time, neural_dim] → [num_patches, patch_size*neural_dim]
                 if self.args['model']['patch_size'] > 0:
+                    # Formula: num_patches = (time - patch_size) / stride + 1
                     adjusted_lens = (
                         (n_time_steps - self.args['model']['patch_size'])
                         / self.args['model']['patch_stride'] + 1
-                    ).to(torch.int32)
+                    ).to(torch.int32)  # [batch] - number of patches per trial
                 else:
-                    adjusted_lens = n_time_steps
+                    adjusted_lens = n_time_steps  # [batch] - no patching, same as input
 
-                # Forward pass
-                # Note: brain_emb will have shape [batch, adjusted_lens, audio_embedding_dim]
+                # ===== FORWARD PASS =====
+                # Pipeline:
+                # 1. features [batch, time, 512] → brain_encoder → brain_emb [batch, seq_len, 1280]
+                # 2. target_texts → TTS → AudioTower → audio_emb [batch, seq_len_audio, 1280]
+                # 3. Stage 1 loss: align brain_emb ↔ audio_emb
+                # 4. brain_emb → projector [3584] → LLM → text prediction
+                # 5. Stage 2 loss: LLM cross-entropy on target_texts
                 total_loss, alignment_loss, llm_loss, brain_emb, audio_emb = self.model(
-                    features, day_indicies, target_texts
+                    features,  # [batch, time, 512]
+                    day_indicies,  # [batch]
+                    target_texts  # list of batch_size strings
                 )
+                # total_loss: scalar - α * alignment_loss + β * llm_loss
+                # alignment_loss: scalar - cosine/MSE between brain and audio embeddings
+                # llm_loss: scalar - cross-entropy for text generation
+                # brain_emb: [batch, seq_len, 1280] - brain embeddings in audio space
+                # audio_emb: [batch, seq_len_audio, 1280] - target audio embeddings
 
-            # Backward pass
+            # ===== BACKWARD PASS =====
+            # Gradients flow:
+            # 1. LLM loss → (frozen projector) → (frozen LLM) BUT gradients flow back to brain_emb
+            # 2. Alignment loss → brain_emb
+            # 3. Both losses → brain_encoder parameters (TRAINABLE)
             total_loss.backward()
 
-            # Gradient clipping
+            # Gradient clipping (prevent exploding gradients)
             if self.args['grad_norm_clip_value'] > 0:
                 grad_norm = torch.nn.utils.clip_grad_norm_(
-                    self.model.brain_encoder.parameters(),
+                    self.model.brain_encoder.parameters(),  # Only brain_encoder has gradients
                     max_norm=self.args['grad_norm_clip_value'],
                     error_if_nonfinite=True,
                     foreach=True
                 )
 
-            self.optimizer.step()
-            self.learning_rate_scheduler.step()
+            # ===== OPTIMIZER STEP =====
+            self.optimizer.step()  # Update brain_encoder parameters
+            self.learning_rate_scheduler.step()  # Update learning rates
 
             train_step_duration = time.time() - start_time
             train_losses.append(total_loss.detach().item())
@@ -422,9 +445,9 @@ class Brain2TextTrainer:
                 if i == 0:
                     self.logger.info(
                         f'Data shapes: '
-                        f'input=[{features.shape[0]}, {features.shape[1]}, {features.shape[2]}] '
-                        f'brain_emb=[{brain_emb.shape[0]}, {brain_emb.shape[1]}, {brain_emb.shape[2]}] '
-                        f'audio_emb=[{audio_emb.shape[0]}, {audio_emb.shape[1]}, {audio_emb.shape[2]}]'
+                        f'input=[{features.shape[0]}, {features.shape[1]}, {features.shape[2]}] '  # [batch, time, 512]
+                        f'brain_emb=[{brain_emb.shape[0]}, {brain_emb.shape[1]}, {brain_emb.shape[2]}] '  # [batch, seq_len, 1280]
+                        f'audio_emb=[{audio_emb.shape[0]}, {audio_emb.shape[1]}, {audio_emb.shape[2]}]'  # [batch, seq_len_audio, 1280]
                     )
                     if self.args['model']['patch_size'] > 0:
                         self.logger.info(
@@ -517,7 +540,15 @@ class Brain2TextTrainer:
         }
 
     def validation(self):
-        """Run validation."""
+        """
+        Run validation on held-out data.
+
+        Evaluates model performance without gradients.
+        Same forward pass as training but:
+        - No augmentation (except smoothing which is critical for neural data)
+        - No gradient computation (torch.no_grad)
+        - Model in eval mode (affects dropout, batchnorm if present)
+        """
         self.model.eval()
 
         metrics = {
@@ -527,44 +558,61 @@ class Brain2TextTrainer:
             'day_indicies': [],
         }
 
-        with torch.no_grad():
+        with torch.no_grad():  # Disable gradient computation for efficiency
             for batch in self.val_loader:
-                features = batch['input_features'].to(self.device)
-                n_time_steps = batch['n_time_steps'].to(self.device)
-                day_indicies = batch['day_indicies'].to(self.device)
+                # ===== Load batch data =====
+                features = batch['input_features'].to(self.device)  # [batch, time, neural_dim=512]
+                n_time_steps = batch['n_time_steps'].to(self.device)  # [batch] - actual timesteps
+                day_indicies = batch['day_indicies'].to(self.device)  # [batch] - day indices
 
-                # Decode transcriptions
-                transcriptions_raw = batch['transcriptions']
-                target_texts = []
+                # Decode transcriptions from byte strings
+                transcriptions_raw = batch['transcriptions']  # [batch, max_text_len]
+                target_texts = []  # Will be list of batch_size strings
                 for j in range(transcriptions_raw.shape[0]):
                     text = bytes(transcriptions_raw[j].cpu().numpy()).decode('utf-8').strip()
-                    target_texts.append(text)
+                    target_texts.append(text)  # e.g., "hello world"
 
                 # Apply transforms (no augmentation in val, but still smooth)
+                # Smoothing is CRITICAL for neural data quality
                 with torch.autocast(device_type="cuda", enabled=self.args['use_amp'], dtype=torch.bfloat16):
                     features, n_time_steps = apply_data_augmentations(
                         features, n_time_steps, mode='val',
                         transform_args=self.transform_args, device=self.device
                     )
+                    # features: [batch, time, neural_dim=512] - smoothed but not augmented
+                    # n_time_steps: [batch] - unchanged in val mode
 
                     # Calculate adjusted sequence lengths after patching
                     if self.args['model']['patch_size'] > 0:
+                        # Formula: num_patches = (time - patch_size) / stride + 1
                         adjusted_lens = (
                             (n_time_steps - self.args['model']['patch_size'])
                             / self.args['model']['patch_stride'] + 1
-                        ).to(torch.int32)
+                        ).to(torch.int32)  # [batch]
                     else:
-                        adjusted_lens = n_time_steps
+                        adjusted_lens = n_time_steps  # [batch]
 
+                    # ===== FORWARD PASS (same as training) =====
+                    # 1. features [batch, time, 512] → brain_encoder → brain_emb [batch, seq_len, 1280]
+                    # 2. target_texts → TTS → AudioTower → audio_emb [batch, seq_len_audio, 1280]
+                    # 3. Alignment loss: brain_emb ↔ audio_emb
+                    # 4. LLM loss: brain_emb → projector → LLM → text prediction
                     total_loss, alignment_loss, llm_loss, _, _ = self.model(
-                        features, day_indicies, target_texts
+                        features,  # [batch, time, 512]
+                        day_indicies,  # [batch]
+                        target_texts  # list of batch_size strings
                     )
+                    # total_loss: scalar
+                    # alignment_loss: scalar
+                    # llm_loss: scalar
 
+                # Collect metrics (move to CPU for storage)
                 metrics['total_losses'].append(total_loss.cpu().item())
                 metrics['alignment_losses'].append(alignment_loss.cpu().item())
                 metrics['llm_losses'].append(llm_loss.cpu().item())
-                metrics['day_indicies'].append(day_indicies.cpu().numpy())
+                metrics['day_indicies'].append(day_indicies.cpu().numpy())  # [batch]
 
+        # Compute average metrics across all validation batches
         metrics['avg_total_loss'] = np.mean(metrics['total_losses'])
         metrics['avg_alignment_loss'] = np.mean(metrics['alignment_losses'])
         metrics['avg_llm_loss'] = np.mean(metrics['llm_losses'])
@@ -573,6 +621,7 @@ class Brain2TextTrainer:
 
 
 if __name__ == "__main__":
-    args = OmegaConf.load('training_args.yaml')
+    config_path = sys.argv[1] if len(sys.argv) > 1 else 'training_args.yaml'
+    args = OmegaConf.load(config_path)
     trainer = Brain2TextTrainer(args)
     metrics = trainer.train()
