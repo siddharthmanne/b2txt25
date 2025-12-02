@@ -1,6 +1,5 @@
 import torch
 from torch import nn
-from transformers import Qwen2AudioForConditionalGeneration, AutoProcessor
 
 class LLMDecoder(nn.Module):
     """
@@ -39,8 +38,8 @@ class LLMDecoder(nn.Module):
         self.audio_processor = shared_processor
 
         # Extract components
-        self.projector = self.a2t_model.multi_modal_projector  # Audio emb → LLM emb
-        self.llm_decoder = self.a2t_model.language_model       # The actual LLM
+        self.projector = self.a2t_model.multi_modal_projector  # Audio emb → LLM emb space / LLM inpput
+        self.llm_decoder = self.a2t_model.language_model       # The actual LLM (audio emb -> text)
 
         # Get tokenizer
         self.tokenizer = self.audio_processor.tokenizer
@@ -71,8 +70,8 @@ class LLMDecoder(nn.Module):
             llm_embeddings: [batch, seq_len, 3584] - projected to Qwen2-7B LLM space
         '''
         # Multi-modal projector: Linear(1280, 3584) - maps audio encoder dim to LLM dim
-        with torch.no_grad():
-            llm_embeddings = self.projector(aligned_brain_embedding)  # [batch, seq_len, 3584]
+        # Projector is frozen, but gradients must flow through for training brain encoder
+        llm_embeddings = self.projector(aligned_brain_embedding)  # [batch, seq_len, 3584]
         return llm_embeddings  # [batch, seq_len, 3584]
 
     def build_train_batch(self, brain_prefix, target_texts):
@@ -217,7 +216,8 @@ class LLMDecoder(nn.Module):
 
         Args:
             aligned_brain_embedding: [batch, seq_len, 1280] - brain embeddings in audio space
-            max_length: int - maximum tokens to generate
+            max_length: int - maximum NEW tokens to generate (beyond brain embeddings + prompt)
+                              ~1-2 tokens per word, so 30 tokens ≈ 15-30 words
 
         Returns:
             generated_texts: list of str - decoded text predictions
@@ -247,9 +247,10 @@ class LLMDecoder(nn.Module):
         with torch.no_grad():
             outputs = self.llm_decoder.generate(
                 inputs_embeds=inputs_embeds,  # [batch, seq_len + prompt_len, 3584]
-                max_length=max_length,  # Max tokens to generate (total length)
+                max_new_tokens=max_length,  # Max NEW tokens to generate (not total length)
                 num_beams=5,  # Beam search for better quality
                 early_stopping=True  # Stop at EOS token
+                # use_cache defaults to True for generation (faster, less memory during generation)
             )
             # outputs: [batch, generated_length] - token IDs
 

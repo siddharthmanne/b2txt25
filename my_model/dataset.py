@@ -9,8 +9,8 @@ import math
 class BrainToTextDataset(Dataset):
     '''
     Dataset for brain-to-text data
-    
-    Returns an entire batch of data instead of a single exampl
+
+    Returns an entire batch of data instead of a single example
     '''
 
     def __init__(

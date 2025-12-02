@@ -1,115 +1,96 @@
 import torch
 from torch import nn
-import librosa
-import numpy as np
-from transformers import pipeline, Qwen2AudioForConditionalGeneration, AutoProcessor
+from torch.nn.utils.rnn import pad_sequence
+import h5py
+import hashlib
+import os
+from typing import Optional
 
 class AudioTarget(nn.Module):
     '''
-    Frozen target pipeline: Text → TTS → Audio → AudioTower → audio_embedding
+    Frozen target pipeline: Text → Precomputed Audio Embeddings
 
-    This creates the target embeddings that brain_embedding should align to.
-    All components are FROZEN (no training).
+    This loads precomputed audio embeddings for text labels.
+    All embeddings must be precomputed using precompute_all_embeddings.py before training.
+
+    Benefits:
+    - Extremely fast (no TTS or AudioTower computation during training)
+    - Deterministic (same text always gives same embedding)
+    - Memory efficient (embeddings loaded on-demand from HDF5)
     '''
     def __init__(
         self,
-        t2a_model_id="facebook/mms-tts-eng",
-        shared_a2t_model=None,
-        shared_processor=None,
-        device="cuda" if torch.cuda.is_available() else "cpu"
+        cache_dir: str,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+        logger=None,
     ):
         '''
-        t2a_model_id (str)       - Text-to-Audio (TTS) model ID
-        shared_a2t_model         - Shared Qwen2AudioForConditionalGeneration instance
-        shared_processor         - Shared AutoProcessor instance
-        device (str)             - Device to run on
+        cache_dir (str)   - Directory containing embeddings.h5 file
+        device (str)      - Device to load embeddings to
+        logger            - Logger instance
         '''
         super(AudioTarget, self).__init__()
 
         self.device = device
-        self.t2a_model_id = t2a_model_id
+        self.logger = logger
 
-        # Text-to-Speech pipeline (for converting labels to audio)
-        self.t2a_pipeline = pipeline("text-to-speech", t2a_model_id, device=device)
+        # Setup embeddings file path
+        if cache_dir is None:
+            raise ValueError("cache_dir must be provided")
 
-        # Use shared model and processor (passed from Brain2TextModel)
-        if shared_a2t_model is None or shared_processor is None:
-            raise ValueError("AudioTarget requires shared_a2t_model and shared_processor to be provided")
+        self.embeddings_path = os.path.join(cache_dir, 'embeddings.h5')
 
-        self.a2t_model = shared_a2t_model
-        self.audio_processor = shared_processor
+        if not os.path.exists(self.embeddings_path):
+            raise FileNotFoundError(
+                f"Embeddings file not found at {self.embeddings_path}\n"
+                f"Please run: python precompute_all_embeddings.py"
+            )
 
-        # Extract audio tower component
-        self.audio_tower = self.a2t_model.audio_tower  # This creates audio embeddings
+        # Log cache info
+        if logger:
+            with h5py.File(self.embeddings_path, 'r') as f:
+                n_entries = len(f['embeddings'].keys())
+            logger.info(f"Audio embedding cache loaded from: {self.embeddings_path}")
+            logger.info(f"  Cached embeddings: {n_entries}")
 
-        # Get target sampling rate
-        self.target_sr = self.audio_processor.feature_extractor.sampling_rate
+    @staticmethod
+    def _text_to_hash(text):
+        """Convert text to SHA256 hash for cache lookup."""
+        return hashlib.sha256(text.encode('utf-8')).hexdigest()  
 
-        # Freeze all parameters in audio_tower
-        for param in self.audio_tower.parameters():
-            param.requires_grad = False
-
-        self.audio_tower.eval()  # Set to eval mode
-
-    def text_to_audio_embedding(self, text):
+    def _load_embedding_from_cache(self, text):
         '''
-        Convert text to audio array using TTS and audio array to audio embedding using AudioTower
+        Load precomputed embedding from HDF5 cache.
 
         Args:
             text (str) - Text transcription
 
         Returns:
-            audio_embedding (torch.Tensor) - [1, seq_len, 1280] where seq_len = num_frames // 2
+            embedding (torch.Tensor) - [1, seq_len, 1280]
+            attention_mask (torch.Tensor) - [1, seq_len]
         '''
-        # Convert raw text to audio array
-        with torch.no_grad():
-            tts_output = self.t2a_pipeline(text)  # dict with 'audio' and 'sampling_rate'
+        text_hash = self._text_to_hash(text)
 
-        # Extract audio array and sampling rate
-        audio_array = tts_output['audio']  # shape: [1, n_samples]
-        source_sr = tts_output['sampling_rate']  # scalar int
+        with h5py.File(self.embeddings_path, 'r') as f:
+            if text_hash not in f['embeddings']:
+                raise KeyError(
+                    f"Text not found in cache: '{text[:50]}...'\n"
+                    f"Please rerun precompute_all_embeddings.py to include this text."
+                )
 
-        # TTS outputs 2D array (1, n_samples) - squeeze to 1D
-        audio_array = audio_array.squeeze()  # shape: [n_samples]
+            # Load embedding and mask
+            embedding_data = f['embeddings'][text_hash]['embedding'][:]
+            attention_mask_data = f['embeddings'][text_hash]['attention_mask'][:]
 
-        # Resample if needed
-        if source_sr != self.target_sr:
-            audio_array = audio_array.astype(np.float32)  # shape: [n_samples]
-            audio_array = librosa.resample(
-                audio_array,
-                orig_sr=source_sr,
-                target_sr=self.target_sr
-            )  # shape: [n_samples_resampled]
+        # Convert to torch tensors and add batch dimension
+        embedding = torch.from_numpy(embedding_data).unsqueeze(0)  # [1, seq_len, 1280]
+        attention_mask = torch.from_numpy(attention_mask_data).unsqueeze(0)  # [1, seq_len]
 
-        # Convert audio array to audio embedding
-
-        # Process audio with Qwen2Audio processor - expects 16kHz audio
-        # Processor converts to mel-spectrogram: 128 mel-frequency bins
-        inputs = self.audio_processor(
-            text=["<|AUDIO|>"],  # Required token for audio input, list with 1 element
-            audios=[audio_array],  # List with 1 audio array: [n_samples] at 16kHz
-            sampling_rate=self.target_sr,  # Must be 16000
-            return_tensors="pt"
-        ).to(self.device)
-        # inputs.input_features: [1, 128, num_frames] - mel-spectrogram with 128 mel bins
-
-        # Encode audio to embeddings using audio_tower (Whisper-large-v3 encoder)
-        # FROZEN, no gradients
-        with torch.no_grad():
-            features = inputs.input_features.to(dtype=self.a2t_model.dtype)  # [1, 128, num_frames]
-            encoder_outputs = self.audio_tower(
-                input_features=features,
-                return_dict=True
-            )
-            # Encoder has stride-2 pooling layer, so output seq_len = num_frames // 2
-            # Each output frame corresponds to ~40ms of original audio
-            audio_embedding = encoder_outputs.last_hidden_state  # [1, seq_len, 1280]
-
-        return audio_embedding  # [1, seq_len, 1280] - audio embeddings in Whisper encoder space
+        return embedding, attention_mask
 
     def forward(self, text_labels):
         '''
-        End-to-end: Text labels → Audio → Audio embeddings
+        Load precomputed audio embeddings for batch of text labels.
 
         Args:
             text_labels (list of str) - Batch of text transcriptions, length = batch_size
@@ -118,33 +99,38 @@ class AudioTarget(nn.Module):
             audio_embeddings (torch.Tensor) - [batch, max_seq_len, 1280]
             attention_mask (torch.Tensor) - [batch, max_seq_len]
         '''
-        batch_embeddings = []  # Will store list of [seq_len_i, 1280] tensors
+        batch_size = len(text_labels)
 
-        for text in text_labels:  # Process each text individually
-            audio_embedding = self.text_to_audio_embedding(text)  # [1, seq_len_i, 1280]
-            batch_embeddings.append(audio_embedding.squeeze(0))  # [seq_len_i, 1280]
+        # Load embeddings from cache for each text
+        # NOTE: HDF5 file reading MUST be sequential - h5py doesn't support parallel reads
+        embeddings_list = []
+        masks_list = []
 
-        # Pad to max sequence length for embeddings
-        max_seq_len = max(emb.size(0) for emb in batch_embeddings)  # scalar int
-        embedding_dim = batch_embeddings[0].size(-1)  # 1280
-        batch_size = len(batch_embeddings)  # scalar int
+        for text in text_labels:
+            embedding, mask = self._load_embedding_from_cache(text)
+            # embedding: [1, seq_len, 1280]
+            # mask: [1, seq_len]
+            embeddings_list.append(embedding.squeeze(0))  # [seq_len, 1280]
+            masks_list.append(mask.squeeze(0))  # [seq_len]
 
-        audio_embeddings = torch.zeros(
-            batch_size, max_seq_len, embedding_dim,
-            dtype=batch_embeddings[0].dtype,
-            device=batch_embeddings[0].device
+        # OPTIMIZED: Use torch's optimized pad_sequence instead of manual padding
+        # pad_sequence expects list of [seq_len, dim] tensors
+        # Returns [batch, max_seq_len, 1280] with batch_first=True
+        audio_embeddings = pad_sequence(
+            embeddings_list,
+            batch_first=True,
+            padding_value=0.0
         )  # [batch, max_seq_len, 1280]
 
-        attention_mask = torch.zeros(
-            batch_size, max_seq_len,
-            dtype=torch.long,
-            device=batch_embeddings[0].device
+        # For attention mask, pad with 0 (masked positions)
+        attention_mask = pad_sequence(
+            masks_list,
+            batch_first=True,
+            padding_value=0
         )  # [batch, max_seq_len]
 
-        for i, emb in enumerate(batch_embeddings):  # emb: [seq_len_i, 1280]
-            seq_len = emb.size(0)  # scalar int
-            audio_embeddings[i, :seq_len, :] = emb  # Fill in [seq_len_i, 1280]
-            attention_mask[i, :seq_len] = 1  # Mark valid positions
-
+        # Move to device (single transfer for entire batch - efficient)
+        audio_embeddings = audio_embeddings.to(self.device, non_blocking=True)
+        attention_mask = attention_mask.to(self.device, non_blocking=True)
 
         return audio_embeddings, attention_mask  # [batch, max_seq_len, 1280], [batch, max_seq_len]

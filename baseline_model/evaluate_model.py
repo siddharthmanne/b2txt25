@@ -256,10 +256,10 @@ if eval_type == 'val':
         lm_results['edit_distance'].append(ed)
         lm_results['num_words'].append(len(true_sentence.split()))
 
-        print(f'{lm_results["session"][i]} - Block {lm_results["block"][i]}, Trial {lm_results["trial"][i]}')
+        print(f'{lm_results["session"][i]} - Block {lm_results["block"][iWER]}, Trial {lm_results["trial"][i]}')
         print(f'True sentence:       {true_sentence}')
         print(f'Predicted sentence:  {pred_sentence}')
-        print(f'WER: {ed} / {100 * len(true_sentence.split())} = {ed / len(true_sentence.split()):.2f}%')
+        print(f'WER: {ed} / {len(true_sentence.split())} = {100 * ed / len(true_sentence.split()):.2f}%')
         print()
 
     print(f'Total true sentence length: {total_true_length}')
