@@ -1,0 +1,112 @@
+================================================================================
+Evaluation Results
+================================================================================
+Model path: trained_models/baseline_rnn_new_2
+Data directory: ../data/hdf5_data_final
+Config path: rnn_args.yaml
+Evaluated sessions: ['t15.2024.02.25', 't15.2024.03.08', 't15.2024.03.15', 't15.2024.03.17', 't15.2024.05.10', 't15.2024.06.14', 't15.2024.07.19', 't15.2024.07.21', 't15.2024.07.28', 't15.2025.01.10', 't15.2025.01.12', 't15.2025.03.14', 't15.2025.03.16', 't15.2025.03.30', 't15.2025.04.13']
+
+================================================================================
+Overall Metrics:
+================================================================================
+Total trials: 2702
+Total phonemes: 80565
+Total edit distance: 54710
+Overall PER: 67.91%
+
+================================================================================
+Per-Day Metrics:
+================================================================================
+t15.2024.02.25:
+  Trials: 216
+  Total phonemes: 6136
+  Total edit distance: 3615
+  PER: 58.91%
+
+t15.2024.03.08:
+  Trials: 187
+  Total phonemes: 5793
+  Total edit distance: 3757
+  PER: 64.85%
+
+t15.2024.03.15:
+  Trials: 287
+  Total phonemes: 9101
+  Total edit distance: 5605
+  PER: 61.59%
+
+t15.2024.03.17:
+  Trials: 294
+  Total phonemes: 9373
+  Total edit distance: 5778
+  PER: 61.65%
+
+t15.2024.05.10:
+  Trials: 135
+  Total phonemes: 3685
+  Total edit distance: 2485
+  PER: 67.44%
+
+t15.2024.06.14:
+  Trials: 115
+  Total phonemes: 3158
+  Total edit distance: 2156
+  PER: 68.27%
+
+t15.2024.07.19:
+  Trials: 217
+  Total phonemes: 6765
+  Total edit distance: 4887
+  PER: 72.24%
+
+t15.2024.07.21:
+  Trials: 206
+  Total phonemes: 6137
+  Total edit distance: 4213
+  PER: 68.65%
+
+t15.2024.07.28:
+  Trials: 209
+  Total phonemes: 5963
+  Total edit distance: 4260
+  PER: 71.44%
+
+t15.2025.01.10:
+  Trials: 129
+  Total phonemes: 3804
+  Total edit distance: 2828
+  PER: 74.34%
+
+t15.2025.01.12:
+  Trials: 210
+  Total phonemes: 6118
+  Total edit distance: 4488
+  PER: 73.36%
+
+t15.2025.03.14:
+  Trials: 83
+  Total phonemes: 2487
+  Total edit distance: 1839
+  PER: 73.94%
+
+t15.2025.03.16:
+  Trials: 125
+  Total phonemes: 3576
+  Total edit distance: 2640
+  PER: 73.83%
+
+t15.2025.03.30:
+  Trials: 195
+  Total phonemes: 5726
+  Total edit distance: 4187
+  PER: 73.12%
+
+t15.2025.04.13:
+  Trials: 94
+  Total phonemes: 2743
+  Total edit distance: 1972
+  PER: 71.89%
+
+================================================================================
+Average PER across 15 days: 69.03%
+================================================================================
