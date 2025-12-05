@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from peft import LoraConfig, get_peft_model, TaskType
 
 class LLMDecoder(nn.Module):
     """
@@ -18,17 +19,33 @@ class LLMDecoder(nn.Module):
         shared_a2t_model=None,
         shared_processor=None,
         device="cuda" if torch.cuda.is_available() else "cpu",
-        freeze_all=True
+        freeze_all=True,
+        use_lora=False,
+        lora_r=8,
+        lora_alpha=16,
+        lora_dropout=0.1,
+        lora_target_modules=None,
+        lora_bias="none",
+        logger=None,
     ):
         '''
         shared_a2t_model         - Shared Qwen2AudioForConditionalGeneration instance
         shared_processor         - Shared AutoProcessor instance
         device (str)             - Device to run on
         freeze_all (bool)        - Whether to freeze all parameters
+        use_lora (bool)          - Whether to use LoRA adapters
+        lora_r (int)             - LoRA rank
+        lora_alpha (int)         - LoRA scaling factor
+        lora_dropout (float)     - Dropout for LoRA layers
+        lora_target_modules      - List of module names to apply LoRA to
+        lora_bias (str)          - How to handle bias terms: 'none', 'all', or 'lora_only'
+        logger                   - Logger instance
         '''
         super(LLMDecoder, self).__init__()
 
         self.device = device
+        self.use_lora = use_lora
+        self.logger = logger
 
         # Use shared model and processor (passed from Brain2TextModel)
         if shared_a2t_model is None or shared_processor is None:
@@ -49,8 +66,45 @@ class LLMDecoder(nn.Module):
         self.d_model = self.llm_decoder.config.hidden_size
         self.vocab_size = self.llm_decoder.config.vocab_size
 
-        # Freeze everything if specified
-        if freeze_all:
+        # Apply LoRA or freeze everything
+        if use_lora:
+            if logger:
+                logger.info("Applying LoRA adapters to LLM decoder")
+
+            # Freeze base model first
+            for param in self.llm_decoder.parameters():
+                param.requires_grad = False
+
+            # Configure LoRA
+            if lora_target_modules is None:
+                lora_target_modules = ["q_proj", "v_proj", "k_proj", "o_proj"]
+
+            lora_config = LoraConfig(
+                r=lora_r,
+                lora_alpha=lora_alpha,
+                target_modules=lora_target_modules,
+                lora_dropout=lora_dropout,
+                bias=lora_bias,
+                task_type=TaskType.CAUSAL_LM,
+                # Explicitly disable modules_to_save to avoid bitsandbytes import
+                modules_to_save=None,
+            )
+
+            # Apply LoRA to the LLM decoder
+            # Important: This assumes the model is NOT quantized
+            # If you enable quantization, you'll need to fix the bitsandbytes setup
+            self.llm_decoder = get_peft_model(self.llm_decoder, lora_config)
+
+            if logger:
+                self.llm_decoder.print_trainable_parameters()
+
+            # Projector remains frozen
+            for param in self.projector.parameters():
+                param.requires_grad = False
+            self.projector.eval()
+
+        elif freeze_all:
+            # Freeze everything if not using LoRA
             for param in self.projector.parameters():
                 param.requires_grad = False
             for param in self.llm_decoder.parameters():

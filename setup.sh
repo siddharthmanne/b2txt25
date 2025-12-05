@@ -30,7 +30,7 @@ pip install \
     h5py==3.13.0 \
     omegaconf==2.3.0 \
     editdistance==0.8.1 \
-    -e . \
+    -e . \l
     huggingface-hub==0.33.1 \
     transformers==4.53.0 \
     tokenizers==0.21.2 \

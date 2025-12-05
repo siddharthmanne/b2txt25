@@ -55,8 +55,8 @@ class Brain2TextTrainer:
 
         self.transform_args = self.args['dataset']['data_transforms']
 
-        # Effective batch size = batch_size × gradient_accumulation_steps
-        self.gradient_accumulation_steps = 4
+        #  gradient accumulation - update every batch
+        self.gradient_accumulation_steps = 1
 
         # Create output directory
         if args['mode'] == 'train':
@@ -137,6 +137,12 @@ class Brain2TextTrainer:
             device=self.device,
             use_quantization=self.args['model'].get('use_quantization', False),
             quantization_bits=self.args['model'].get('quantization_bits', 8),
+            use_lora=self.args['model'].get('use_lora', False),
+            lora_r=self.args['model'].get('lora_r', 8),
+            lora_alpha=self.args['model'].get('lora_alpha', 16),
+            lora_dropout=self.args['model'].get('lora_dropout', 0.1),
+            lora_target_modules=self.args['model'].get('lora_target_modules', None),
+            lora_bias=self.args['model'].get('lora_bias', 'none'),
             alpha=self.args['alpha'],
             beta=self.args['beta'],
             cache_dir=self.args.get('cache_dir', 'cache/audio_embeddings'),
@@ -283,16 +289,20 @@ class Brain2TextTrainer:
         Create optimizer with special parameter groups:
         - Biases: no weight decay
         - Day-specific layers: separate LR, no weight decay
+        - LoRA parameters: trainable if use_lora=True
         - Other parameters: standard LR and weight decay
         """
         bias_params = []
         day_params = []
+        lora_params = []
         other_params = []
 
         # Get brain_encoder parameters (may be wrapped in DataParallel)
         brain_encoder = self.model.brain_encoder.module if self.use_multi_gpu else self.model.brain_encoder
 
         for name, p in brain_encoder.named_parameters():
+            if not p.requires_grad:
+                continue
             if 'bias' in name:
                 bias_params.append(p)
             elif 'day_' in name or 'day_weights' in name or 'day_biases' in name:
@@ -300,18 +310,37 @@ class Brain2TextTrainer:
             else:
                 other_params.append(p)
 
+        # Get LoRA parameters from LLM decoder if LoRA is enabled
+        if self.args['model'].get('use_lora', False):
+            for name, p in self.model.llm_decoder.named_parameters():
+                if p.requires_grad and 'lora' in name.lower():
+                    lora_params.append(p)
+
+            if len(lora_params) > 0:
+                self.logger.info(f"Found {len(lora_params)} trainable LoRA parameters")
+
+        # Build parameter groups
+        param_groups = [
+            {'params': bias_params, 'weight_decay': 0, 'group_type': 'bias'},
+        ]
+
         if len(day_params) > 0:
-            param_groups = [
-                {'params': bias_params, 'weight_decay': 0, 'group_type': 'bias'},
-                {'params': day_params, 'lr': self.args['lr_max_day'], 
-                 'weight_decay': self.args['weight_decay_day'], 'group_type': 'day_layer'},
-                {'params': other_params, 'group_type': 'other'}
-            ]
-        else:
-            param_groups = [
-                {'params': bias_params, 'weight_decay': 0, 'group_type': 'bias'},
-                {'params': other_params, 'group_type': 'other'}
-            ]
+            param_groups.append({
+                'params': day_params,
+                'lr': self.args['lr_max_day'],
+                'weight_decay': self.args['weight_decay_day'],
+                'group_type': 'day_layer'
+            })
+
+        if len(lora_params) > 0:
+            param_groups.append({
+                'params': lora_params,
+                'lr': self.args['lr_max'],  # Use same LR as main model
+                'weight_decay': self.args['weight_decay'],
+                'group_type': 'lora'
+            })
+
+        param_groups.append({'params': other_params, 'group_type': 'other'})
 
         optim = torch.optim.SGD(
             param_groups,
@@ -357,17 +386,19 @@ class Brain2TextTrainer:
             # After decay
             return min_lr_ratio
 
-        if len(optim.param_groups) == 3:
-            lr_lambdas = [
-                lambda step: lr_lambda(step, lr_min / lr_max, lr_decay_steps, lr_warmup_steps),  # biases
-                lambda step: lr_lambda(step, lr_min_day / lr_max_day, lr_decay_steps_day, lr_warmup_steps_day),  # day params
-                lambda step: lr_lambda(step, lr_min / lr_max, lr_decay_steps, lr_warmup_steps),  # other
-            ]
-        else:
-            lr_lambdas = [
-                lambda step: lr_lambda(step, lr_min / lr_max, lr_decay_steps, lr_warmup_steps),  # biases
-                lambda step: lr_lambda(step, lr_min / lr_max, lr_decay_steps, lr_warmup_steps),  # other
-            ]
+        # Create lr_lambda for each parameter group based on group_type
+        lr_lambdas = []
+        for group in optim.param_groups:
+            group_type = group.get('group_type', 'other')
+            if group_type == 'day_layer':
+                lr_lambdas.append(
+                    lambda step: lr_lambda(step, lr_min_day / lr_max_day, lr_decay_steps_day, lr_warmup_steps_day)
+                )
+            else:
+                # bias, lora, and other params all use main LR schedule
+                lr_lambdas.append(
+                    lambda step: lr_lambda(step, lr_min / lr_max, lr_decay_steps, lr_warmup_steps)
+                )
 
         return LambdaLR(optim, lr_lambdas, -1)
 
@@ -412,7 +443,7 @@ class Brain2TextTrainer:
 
     def load_model_checkpoint(self, load_path):
         """
-        Load training checkpoint - supports both new format (brain_encoder only) and old format (full model).
+        Load training checkpoint - supports brain_encoder, LoRA adapters, and old full model format.
         """
         checkpoint = torch.load(load_path, weights_only=False)
 
@@ -428,6 +459,22 @@ class Brain2TextTrainer:
                 self.model.brain_encoder.load_state_dict(brain_encoder_state)
 
             self.logger.info("Loaded checkpoint (new format: brain_encoder only)")
+
+            # Load LoRA adapter weights if present
+            if 'lora_state_dict' in checkpoint and checkpoint.get('use_lora', False):
+                lora_state = checkpoint['lora_state_dict']
+                self.logger.info(f"Loading {len(lora_state)} LoRA parameters")
+
+                # Load LoRA weights into the model
+                for name, param in lora_state.items():
+                    # Find the corresponding parameter in the model
+                    module = self.model.llm_decoder
+                    for attr in name.split('.'):
+                        module = getattr(module, attr)
+                    # Copy the loaded weight to the parameter
+                    module.data.copy_(param.to(self.device))
+
+                self.logger.info("Loaded LoRA adapter weights")
 
         elif 'model_state_dict' in checkpoint:
             # OLD FORMAT: Full model saved (~10GB) - extract only brain_encoder
@@ -479,8 +526,9 @@ class Brain2TextTrainer:
         """
         Save training checkpoint - ONLY TRAINABLE PARAMETERS.
 
-        IMPORTANT: Only saves brain_encoder (~180MB) instead of entire model (~10GB).
-        The frozen LLM and projector can be reloaded from HuggingFace during inference.
+        IMPORTANT: Only saves brain_encoder (~180MB) and LoRA adapters (if enabled)
+        instead of entire model (~10GB). The frozen LLM and projector can be
+        reloaded from HuggingFace during inference.
         """
         # Get brain_encoder state dict (handles DataParallel wrapper)
         if self.use_multi_gpu:
@@ -496,7 +544,21 @@ class Brain2TextTrainer:
             # Save model config for reconstruction
             'alpha': self.model.alpha,
             'beta': self.model.beta,
+            'use_lora': self.args['model'].get('use_lora', False),
         }
+
+        # Save LoRA adapter weights if LoRA is enabled
+        if self.args['model'].get('use_lora', False):
+            # PEFT library provides a method to get only the trainable LoRA parameters
+            # This is much more efficient than saving the entire LLM
+            lora_state_dict = {}
+            for name, param in self.model.llm_decoder.named_parameters():
+                if param.requires_grad and 'lora' in name.lower():
+                    lora_state_dict[name] = param.cpu()
+
+            checkpoint['lora_state_dict'] = lora_state_dict
+            self.logger.info(f"Saving {len(lora_state_dict)} LoRA parameters")
+
         torch.save(checkpoint, save_path)
 
         # Calculate and log checkpoint size

@@ -1,0 +1,14 @@
+[Unit]
+Description=Mount GCS bucket b2txt25-data to data folder
+After=network.target
+
+[Service]
+Type=forking
+User=Siddharth
+Group=Siddharth
+ExecStart=/usr/bin/gcsfuse --implicit-dirs b2txt25-data /home/Siddharth/data
+ExecStop=/bin/fusermount -u /home/Siddharth/data
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

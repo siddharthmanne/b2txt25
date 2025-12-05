@@ -1,0 +1,40 @@
+# python3 -m pip install huggingface-hub==0.33.1 transformers==4.53.0 tokenizers==0.21.2 accelerate==1.8.1 bitsandbytes librosa soundfile numpy scipy==1.15.2 h5py==3.13.0 pandas==2.3.0 scikit-learn==1.6.1 matplotlib==3.10.1 jupyter==1.1.1 omegaconf==2.3.0 pyyaml tqdm==4.67.1 g2p_en==2.1.0 editdistance==0.8.1 tensorboard wandb peft>=0.7.0
+
+# PyTorch and related
+torch>=2.0.0
+torchvision
+torchaudio
+
+# HuggingFace / Transformers
+huggingface-hub==0.33.1
+transformers==4.53.0
+tokenizers==0.21.2
+accelerate==1.8.1
+bitsandbytes
+peft>=0.7.0  # Parameter-Efficient Fine-Tuning (for LoRA)
+
+# Audio processing
+librosa
+soundfile
+
+# Scientific computing
+numpy<2.0  # Use 1.x for compatibility with TensorFlow/PyTorch
+scipy==1.15.2
+h5py==3.13.0
+pandas==2.3.0
+scikit-learn==1.6.1
+
+# Visualization
+matplotlib==3.10.1
+jupyter==1.1.1
+
+# Configuration and utilities
+omegaconf==2.3.0
+pyyaml
+tqdm==4.67.1
+g2p_en==2.1.0
+editdistance==0.8.1
+
+# Monitoring and logging (optional)
+tensorboard
+wandb

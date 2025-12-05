@@ -1,0 +1,116 @@
+================================================================================
+TRIAL COUNTS BY DAY AND SPLIT (Days 1-45)
+Data Directory: /Users/Siddharth/nejm-brain-to-text/data/hdf5_data_final
+================================================================================
+
+SUMMARY:
+  Total days: 45
+  Total train trials: 8,072
+  Total val trials: 1,426
+  Total test trials: 1,450
+  Total trials overall: 10,948
+  Average trials per day: 243.3
+
+BREAKDOWN BY DAY:
+Day   Date            Train      Val        Test       Total      Corpus Details
+------------------------------------------------------------------------------------------------------------
+1     2023.08.11      288        0          0          288        Train: 50-Word (288)
+2     2023.08.13      348        35         35         418        Train: 50-Word (80), Switchboard (268)
+                                                                   Val/Test: Switchboard (70)
+3     2023.08.18      197        49         50         296        Train: Switchboard (197)
+                                                                   Val/Test: Switchboard (99)
+4     2023.08.20      278        48         49         375        Train: Switchboard (278)
+                                                                   Val/Test: Switchboard (97)
+5     2023.08.25      88         25         25         138        Train: Switchboard (88)
+                                                                   Val/Test: Switchboard (50)
+6     2023.08.27      150        25         25         200        Train: Switchboard (150)
+                                                                   Val/Test: Switchboard (50)
+7     2023.09.01      297        49         50         396        Train: Switchboard (297)
+                                                                   Val/Test: Switchboard (99)
+8     2023.09.03      322        34         35         391        Train: Switchboard (322)
+                                                                   Val/Test: Switchboard (69)
+9     2023.09.24      245        35         35         315        Train: 50-Word (11), Switchboard (234)
+                                                                   Val/Test: Switchboard (70)
+10    2023.09.29      153        48         49         250        Train: Switchboard (153)
+                                                                   Val/Test: Openwebtext (47), Switchboard (50)
+11    2023.10.01      218        44         45         307        Train: Switchboard (218)
+                                                                   Val/Test: Openwebtext (40), Switchboard (49)
+12    2023.10.06      174        36         37         247        Train: 50-Word (10), Switchboard (164)
+                                                                   Val/Test: Switchboard (73)
+13    2023.10.08      284        17         18         319        Train: Switchboard (284)
+                                                                   Val/Test: Openwebtext (35)
+14    2023.10.13      155        44         45         244        Train: Switchboard (155)
+                                                                   Val/Test: Random (40), Switchboard (49)
+15    2023.10.15      239        44         45         328        Train: Switchboard (239)
+                                                                   Val/Test: Openwebtext (40), Switchboard (49)
+16    2023.10.20      98         9          9          116        Train: Switchboard (98)
+                                                                   Val/Test: Harvard (18)
+17    2023.10.22      134        33         35         202        Train: Freq words (113), Switchboard (16), Freq words (5)
+                                                                   Val/Test: Harvard (30), Switchboard (38)
+18    2023.11.03      149        50         50         249        Train: Freq words (149)
+                                                                   Val/Test: Harvard (50), Switchboard (50)
+19    2023.11.04      80         15         15         110        Train: Freq words (80)
+                                                                   Val/Test: Freq words (30)
+20    2023.11.17      100        25         25         150        Train: Freq words (100)
+                                                                   Val/Test: Freq words (50)
+21    2023.11.19      60         20         20         100        Train: Freq words (60)
+                                                                   Val/Test: Freq words (40)
+22    2023.11.26      198        44         45         287        Train: Freq words (198)
+                                                                   Val/Test: Freq words (50), Random (39)
+23    2023.12.03      228        34         34         296        Train: Freq words (228)
+                                                                   Val/Test: Freq words (20), Switchboard (48)
+24    2023.12.08      198        50         50         298        Train: Freq words (198)
+                                                                   Val/Test: Freq words (100)
+25    2023.12.10      131        25         25         181        Train: Freq words (131)
+                                                                   Val/Test: Freq words (50)
+26    2023.12.17      135        30         30         195        Train: Freq words (135)
+                                                                   Val/Test: Freq words (60)
+27    2023.12.29      198        50         50         298        Train: Freq words (198)
+                                                                   Val/Test: Freq words (50), Switchboard (50)
+28    2024.02.25      193        23         24         240        Train: Switchboard (193)
+                                                                   Val/Test: Switchboard (47)
+29    2024.03.03      219        0          0          219        Train: 50-Word (200), Switchboard (19)
+30    2024.03.08      163        24         25         212        Train: Switchboard (163)
+                                                                   Val/Test: Switchboard (49)
+31    2024.03.15      239        48         50         337        Train: Switchboard (239)
+                                                                   Val/Test: Switchboard (98)
+32    2024.03.17      246        48         49         343        Train: Switchboard (246)
+                                                                   Val/Test: Switchboard (97)
+33    2024.04.25      364        0          0          364        Train: 50-Word (350), Switchboard (14)
+34    2024.04.28      150        0          0          150        Train: 50-Word (150)
+35    2024.05.10      110        25         25         160        Train: Switchboard (110)
+                                                                   Val/Test: Switchboard (50)
+36    2024.06.14      90         25         25         140        Train: Switchboard (90)
+                                                                   Val/Test: Switchboard (50)
+37    2024.07.19      169        48         49         266        Train: Switchboard (169)
+                                                                   Val/Test: Switchboard (97)
+38    2024.07.21      160        46         47         253        Train: Switchboard (160)
+                                                                   Val/Test: Switchboard (93)
+39    2024.07.28      161        48         49         258        Train: Switchboard (161)
+                                                                   Val/Test: Switchboard (97)
+40    2025.01.10      106        23         24         153        Train: Switchboard (106)
+                                                                   Val/Test: Switchboard (47)
+41    2025.01.12      163        47         47         257        Train: Switchboard (163)
+                                                                   Val/Test: Switchboard (94)
+42    2025.03.14      59         24         26         109        Train: Switchboard (59)
+                                                                   Val/Test: Switchboard (50)
+43    2025.03.16      101        24         24         149        Train: Switchboard (101)
+                                                                   Val/Test: Switchboard (48)
+44    2025.03.30      165        30         30         225        Train: Switchboard (165)
+                                                                   Val/Test: Switchboard (60)
+45    2025.04.13      69         25         25         119        Train: Switchboard (69)
+                                                                   Val/Test: Switchboard (50)
+------------------------------------------------------------------------------------------------------------
+TOTAL                 8,072      1,426      1,450      10,948
+
+NOTES:
+- 4 days only have train data (no val/test split):
+  * Day 1 (2023.08.11)
+  * Day 29 (2024.03.03)
+  * Day 33 (2024.04.25)
+  * Day 34 (2024.04.28)
+
+- All other 41 days have proper train/val/test splits
+- Val and test sets are approximately equal in size for most days
+- Training set sizes vary from 59 to 364 trials per day
+================================================================================

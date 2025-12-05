@@ -26,8 +26,23 @@ model:
   a2t_model_id: "Qwen/Qwen2-Audio-7B-Instruct"  # Audio-to-Text LLM
 
   # Quantization settings (set use_quantization: true to save GPU memory)
-  use_quantization: False  
+  use_quantization: False
   quantization_bits: 8  # 4-bit or 8-bit quantization
+
+  # LoRA (Low-Rank Adaptation) settings for efficient LLM fine-tuning
+  use_lora: true  # Enable LoRA adapters on the LLM
+  lora_r: 8  # LoRA rank (higher = more parameters, better capacity)
+  lora_alpha: 16  # LoRA scaling factor (usually 2x rank)
+  lora_dropout: 0.1  # Dropout for LoRA layers
+  lora_target_modules:  # Which modules to apply LoRA to
+    - q_proj  # Query projection in attention
+    - v_proj  # Value projection in attention
+    - k_proj  # Key projection in attention
+    - o_proj  # Output projection in attention
+    - gate_proj  # Gate projection in FFN
+    - up_proj  # Up projection in FFN
+    - down_proj  # Down projection in FFN
+  lora_bias: none  # How to handle bias terms: 'none', 'all', or 'lora_only'
 
 # Training parameters
 gpu_number: '0'  # GPU to use (string format) - ignored if use_multi_gpu is true
@@ -49,15 +64,15 @@ early_stopping_val_steps: 7  # stop if no improvement for N validation steps
 num_training_batches: 220000  # total training batches
 lr_scheduler_type: cosine  # 'cosine' or 'linear'
 
-# Learning rates
+# Learning rates - FIXED for larger dataset
 lr_max: 0.005  # max LR for main model
 lr_min: 0.0001  # min LR for main model
-lr_decay_steps: 120000  # LR decay duration
-lr_warmup_steps: 1000  # warmup steps
+lr_decay_steps: 120000  # LR decay duration (restored from original)
+lr_warmup_steps: 1000  # warmup steps (restored from original)
 lr_max_day: 0.005  # max LR for day-specific layers
 lr_min_day: 0.0001  # min LR for day-specific layers
-lr_decay_steps_day: 120000  # LR decay for day layers
-lr_warmup_steps_day: 1000  # warmup for day layers
+lr_decay_steps_day: 120000  # LR decay for day layers (restored)
+lr_warmup_steps_day: 1000  # warmup for day layers (restored)
 
 # Optimizer parameters
 weight_decay: 0.001  # weight decay for main model
@@ -65,9 +80,9 @@ weight_decay_day: 0  # no weight decay for day-specific layers
 seed: 10  # random seed
 grad_norm_clip_value: 10  # gradient clipping
 
-# Loss weights
-alpha: 1.0  # alignment loss weight (brain ↔ audio)
-beta: 1.0  # LLM loss weight (text generation)
+# Loss weights - REBALANCED to prioritize alignment
+alpha: 3.0  # alignment loss weight (brain ↔ audio) - INCREASED from 1.0
+beta: 1.0  # LLM loss weight (text generation) - kept at 1.0
 
 # Logging and evaluation
 batches_per_train_log: 200  # log every N batches
@@ -99,11 +114,9 @@ dataset:
   must_include_days: null  # force specific days in each batch
   feature_subset: null  # use subset of features (null = all)
 
-  dataset_dir: /home/ubuntu/data/hdf5_data
-  bad_trials_dict: null  # dictionary of trials to exclude
-
-  # Recording sessions to use
-  sessions:
+  dataset_dir: /home/ubuntu/data/hdf5_data_final # directory containing the dataset
+  bad_trials_dict: null # dictionary of bad trials to exclude from the dataset
+  sessions: # list of sessions to include in the dataset
   - t15.2023.08.11
   - t15.2023.08.13
   - t15.2023.08.18
@@ -124,9 +137,34 @@ dataset:
   - t15.2023.11.03
   - t15.2023.11.04
   - t15.2023.11.17
+  - t15.2023.11.19
+  - t15.2023.11.26
+  - t15.2023.12.03
+  - t15.2023.12.08
+  - t15.2023.12.10
+  - t15.2023.12.17
+  - t15.2023.12.29
+  - t15.2024.02.25
+  - t15.2024.03.03
+  - t15.2024.03.08
+  - t15.2024.03.15
+  - t15.2024.03.17
+  - t15.2024.04.25
+  - t15.2024.04.28
+  - t15.2024.05.10
+  - t15.2024.06.14
+  - t15.2024.07.19
+  - t15.2024.07.21
+  - t15.2024.07.28
+  - t15.2025.01.10
+  - t15.2025.01.12
+  - t15.2025.03.14
+  - t15.2025.03.16
+  - t15.2025.03.30
+  - t15.2025.04.13
 
-  dataset_probability_val:
-  - 1 
+  dataset_probability_val: # probability of including a trial in the validation set (0 or 1)
+  - 0 # no val or test data from this day
   - 1
   - 1
   - 1
@@ -146,3 +184,32 @@ dataset:
   - 1
   - 1
   - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 0 # no val or test data from this day
+  - 1
+  - 1
+  - 1
+  - 0 # no val or test data from this day
+  - 0 # no val or test data from this day
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+
+
+
+  

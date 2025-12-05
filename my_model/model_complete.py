@@ -47,6 +47,13 @@ class Brain2TextModel(nn.Module):
         # Quantization settings
         use_quantization=False,
         quantization_bits=8,
+        # LoRA settings
+        use_lora=False,
+        lora_r=8,
+        lora_alpha=16,
+        lora_dropout=0.1,
+        lora_target_modules=None,
+        lora_bias="none",
         # Loss weights
         alpha=1.0,  # Weight for alignment loss
         beta=1.0,   # Weight for LLM loss
@@ -111,12 +118,19 @@ class Brain2TextModel(nn.Module):
             logger=logger,
         )
 
-        # FROZEN: LLM decoder (aligned_brain_embedding → text)
+        # FROZEN (or LoRA): LLM decoder (aligned_brain_embedding → text)
         self.llm_decoder = LLMDecoder(
             shared_a2t_model=self.shared_a2t_model,  # Same instance
             shared_processor=self.shared_processor,
             device=device,
-            freeze_all=True,
+            freeze_all=(not use_lora),  # Freeze if not using LoRA
+            use_lora=use_lora,
+            lora_r=lora_r,
+            lora_alpha=lora_alpha,
+            lora_dropout=lora_dropout,
+            lora_target_modules=lora_target_modules,
+            lora_bias=lora_bias,
+            logger=logger,
         )
 
         # Loss functions
