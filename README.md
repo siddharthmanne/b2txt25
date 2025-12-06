@@ -1,108 +1,132 @@
-# An Accurate and Rapidly Calibrating Speech Neuroprosthesis
-*The New England Journal of Medicine* (2024)
+# Quantifying Neural Drift in Intracranial Speech Decoding
 
-Nicholas S. Card, Maitreyee Wairagkar, Carrina Iacobacci,
-Xianda Hou, Tyler Singer-Clark, Francis R. Willett,
-Erin M. Kunz, Chaofei Fan, Maryam Vahdati Nia,
-Darrel R. Deo, Aparna Srinivasan, Eun Young Choi,
-Matthew F. Glasser, Leigh R. Hochberg,
-Jaimie M. Henderson, Kiarash Shahlaie,
-Sergey D. Stavisky*, and David M. Brandman*.
-
-<span style="font-size:0.8em;">\* denotes co-senior authors</span>
-
-![Speech neuroprosthesis overview](b2txt_methods_overview.png)
+A GRU-based phoneme decoder for quantifying neural data drift in long-term intracranial speech brain-computer interfaces.
 
 ## Overview
-This repository contains the code and data necessary to reproduce the results of the paper ["*An Accurate and Rapidly Calibrating Speech Neuroprosthesis*" by Card et al. (2024), *N Eng J Med*](https://www.nejm.org/doi/full/10.1056/NEJMoa2314132).
 
-The code is organized into five main directories: `utils`, `analyses`, `data`, `model_training`, and `language_model`:
-- The `utils` directory contains utility functions used throughout the code.
-- The `analyses` directory contains the code necessary to reproduce results shown in the main text and supplemental appendix.
-- The `data` directory contains the data necessary to reproduce the results in the paper. Download it from Dryad using the link above and place it in this directory.
-- The `model_training` directory contains the code necessary to train and evaluate the brain-to-text model. See the README.md in that folder for more detailed instructions.
-- The `language_model` directory contains the ngram language model implementation and a pretrained 1gram language model. Pretrained 3gram and 5gram language models can be downloaded [here](https://datadryad.org/dataset/doi:10.5061/dryad.x69p8czpq) (`languageModel.tar.gz` and `languageModel_5gram.tar.gz`). See [`language_model/README.md`](language_model/README.md) for more information.
+This repository contains code for quantifying neural drift in intracranial EEG (iEEG) speech decoding over a 14-month period. We implement a five-layer GRU-based phoneme decoder trained with CTC loss to decode high-gamma neural features into phoneme sequences. Our analysis reveals systematic performance degradation over time, with phoneme error rate (PER) increasing linearly from ~58% in early sessions to ~74% in late sessions, demonstrating the critical challenge of neural drift in chronic brain-computer interfaces.
 
-## Competition
-This repository also includes baseline model training and evaluation code for the [Brain-to-Text '25 Competition](https://www.kaggle.com/competitions/brain-to-text-25). The competition is hosted on Kaggle, and the code in this repository is designed to help participants train and evaluate their own models for the competition. The baseline model provided here is a custom PyTorch implementation of the RNN model used in the paper, which can be trained and evaluated using the provided data.
+## Project Structure
 
-## Data
-### Data Overview
-The data used in this repository (which can be downloaded from [Dryad](https://datadryad.org/stash/dataset/doi:10.5061/dryad.dncjsxm85), either manually from the website, or using `download_data.py`) consists of various datasets for recreating figures and training/evaluating the brain-to-text model:
-- `t15_copyTask.pkl`: This file contains the online Copy Task results required for generating Figure 2.
-- `t15_personalUse.pkl`: This file contains the Conversation Mode data required for generating Figure 4.
-- `t15_copyTask_neuralData.zip`: This dataset contains the neural data for the Copy Task.
-    - There are 10,948 sentences from 45 sessions spanning 20 months. Each trial of data includes: 
-        - The session date, block number, and trial number
-        - 512 neural features (2 features [-4.5 RMS threshold crossings and spike band power] per electrode, 256 electrodes), binned at 20 ms resolution. The data were recorded from the speech motor cortex via four high-density microelectrode arrays (64 electrodes each). The 512 features are ordered as follows in all data files: 
-            - 0-64: ventral 6v threshold crossings
-            - 65-128: area 4 threshold crossings
-            - 129-192: 55b threshold crossings
-            - 193-256: dorsal 6v threshold crossings
-            - 257-320: ventral 6v spike band power
-            - 321-384: area 4 spike band power
-            - 385-448: 55b spike band power
-            - 449-512: dorsal 6v spike band power
-        - The ground truth sentence label
-        - The ground truth phoneme sequence label
-    - The data is split into training, validation, and test sets. The test set does not include ground truth sentence or phoneme labels.
-    - Data for each session/split is stored in `.hdf5` files. An example of how to load this data using the Python `h5py` library is provided in the [`model_training/evaluate_model_helpers.py`](model_training/evaluate_model_helpers.py) file in the `load_h5py_file()` function.
-    - Each block of data contains sentences drawn from a range of corpuses (Switchboard, OpenWebText2, a 50-word corpus, a custom frequent-word corpus, and a corpus of random word sequences). Furthermore, the majority of the data is during attempted vocalized speaking, but some of it is during attempted silent speaking. [`data/t15_copyTaskData_description.csv`](data/t15_copyTaskData_description.csv) contains a block-by-block description of the Copy Task data, including the session date, block number, number of trials, the corpus used, and what split the data is in (train, val, or test). The speaking strategy for each block is intentionally not listed here.
-- `t15_pretrained_rnn_baseline.zip`: This dataset contains the pretrained RNN baseline model checkpoint and args. An example of how to load this model and use it for inference is provided in the [`model_training/evaluate_model.py`](model_training/evaluate_model.py) file.
+- `data/` – Download the iEEG speech production dataset from [Dryad](https://datadryad.org/dataset/doi:10.5061/dryad.dncjsxm85). More info in the README within this folder.
+- `model_training/` – Model, training, dataset, and evaluation scripts for standard GRU decoder.
+- `model_training_time_emb/` – Model, training, dataset, and evaluation scripts for time-embedding variant of GRU decoder.
+- `final_eval_metrics/` – Predicted phoneme CSV outputs and evaluation metrics.
+- `trial_counts_summary.txt` – Summary of dataset structure across sessions.
+- `requirements.txt` – Python package dependencies.
+- `setup.sh` – Environment setup script.
 
-### Data Directory Structure
-Please download these datasets from [Dryad](https://datadryad.org/stash/dataset/doi:10.5061/dryad.dncjsxm85) and place them in the `data` directory. Be sure to unzip `t15_copyTask_neuralData.zip` and place the resulting `hdf5_data_final` folder into the `data` directory. Likewise, unzip `t15_pretrained_rnn_baseline.zip` and place the resulting `t15_pretrained_rnn_baseline` folder into the `data` directory. The final directory structure should look like this:
-```
-data/
-├── t15_copyTask.pkl
-├── t15_personalUse.pkl
-├── hdf5_data_final/
-│   ├── t15.2023.08.11/
-│   │   ├── data_train.hdf5
-│   ├── t15.2023.08.13/
-│   │   ├── data_train.hdf5
-│   │   ├── data_val.hdf5
-│   │   ├── data_test.hdf5
-│   ├── ...
-├── t15_pretrained_rnn_baseline/
-│   ├── checkpoint/
-│   │   ├── args.yaml
-│   │   ├── best_checkpoint
-│   ├── training_log
-```
+## Methods Summary
 
-## Dependencies
-- The code has only been tested on Ubuntu 22.04 with two NVIDIA RTX 4090 GPUs.
-- We recommend using a conda environment to manage the dependencies. To install miniconda, follow the instructions [here](https://docs.anaconda.com/miniconda/miniconda-install/).
-- Redis is required for communication between python processes. To install redis on Ubuntu:
-    - https://redis.io/docs/getting-started/installation/install-redis-on-linux/
-    - In terminal:
-        ```bash
-        curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
-        
-        echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
-        
-        sudo apt-get update
-        sudo apt-get install redis
-        ```
-    - Turn off autorestarting for the redis server in terminal:
-        - `sudo systemctl disable redis-server`
-- `CMake >= 3.14` and `gcc >= 10.1` are required for the ngram language model installation. You can install these on linux with `sudo apt-get install cmake` and `sudo apt-get install build-essential`.
+### Task
+Phoneme-level decoding from intracranial EEG (iEEG) high-gamma features extracted from 256 electrodes implanted in speech motor cortex.
 
-## Python environment setup for model training and evaluation
-To create a conda environment with the necessary dependencies, run the following command from the root directory of this repository:
-```bash
+### Models
+
+- **Baseline GRU**: Five-layer GRU (hidden size = 768) with linear projection to 41 phoneme classes and CTC loss.
+- **Time-Embedding Variant**: Augments the GRU with sinusoidal encoding of days-since-implant to test temporal drift compensation.
+
+### Metrics
+Phoneme error rate (PER) computed as `(S + D + I) / N`, where S = substitutions, D = deletions, I = insertions, and N = ground-truth phoneme count.
+
+### Key Hyperparameters
+- Optimizer: Adam (β₁=0.9, β₂=0.999, ε=1×10⁻⁸)
+- Learning rate: 1×10⁻⁴ with cosine decay to 1×10⁻⁵ over 5,000 steps
+- Batch size: 64
+- Dropout: 0.4 (GRU layers), 0.2 (input layer)
+- Gradient clipping: max norm 10
+
+Core GRU implementation is in `model_training/models.py` and `model_training_time_emb/models.py`. Training loops are in `model_training/train_model.py` and `model_training_time_emb/train_model.py`.
+
+## Dataset
+
+This project uses the **intracranial EEG speech production dataset** from the NEJM 2024 brain-to-text study, available via [Dryad](https://datadryad.org/dataset/doi:10.5061/dryad.dncjsxm85).
+
+### Data Format
+- **Input**: Each trial is a `T × 512` matrix of high-gamma neural features (2 features × 256 electrodes) sampled at 20ms resolution.
+- **Output**: Phoneme sequence labels corresponding to spoken sentences.
+- **Sessions**: 45 sessions spanning August 2023 to April 2025 (20 months).
+
+### Splits
+- **Training**: First ~15 sessions (August 2023 - October 2023): 3,436 trials
+- **Validation**: From training period: 348 trials
+- **Testing**: Last ~15 sessions (February 2024 - April 2025): 2,702 trials
+
+All splits use only **Switchboard corpus** sentences to ensure consistent text distribution.
+
+### Setup Instructions
+
+1. **Download the dataset** from [Dryad](https://datadryad.org/dataset/doi:10.5061/dryad.dncjsxm85):
+   - Download `t15_copyTask_neuralData.zip`
+   - Unzip and place the `hdf5_data_final/` folder into `data/`
+   
+2. **Update configuration paths** in `model_training/rnn_args.yaml` and `model_training_time_emb/rnn_args.yaml`:
+   - Set `datasetPath` to point to your `data/hdf5_data_final/` directory
+
+
+
+## Environment Setup
+
+**Python version**: Python 3.10
+
+**Environment manager**: conda
+
+### Create environment
+
+conda create -n b2txt25 python=3.10
+conda activate b2txt25
+
+text
+
+Or using venv:
+python3.10 -m venv .venv
+source .venv/bin/activate # or .venv\Scripts\activate on Windows
+
+text
+
+### Install dependencies
+
+pip install -r requirements.txt
+
+text
+
+Or install manually:
+pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2
+pip install numpy scipy scikit-learn
+pip install matplotlib tqdm pyyaml h5py jiwer
+pip install redis
+
+text
+
+The `setup.sh` script is also provided for automated setup:
 ./setup.sh
-```
 
-Verify it worked by activating the conda environment with the command `conda activate b2txt25`.
+## How to Run
+cd model_training or cd model_training_time_emb
+Training the model: python3 train_model.py rnn_args.yaml
+Evaluating the trained model: python3 evaluate_model.py --config_path rnn_args.yaml
 
-## Python environment setup for ngram language model and OPT rescoring
-We use an ngram language model plus rescoring via the [Facebook OPT 6.7b](https://huggingface.co/facebook/opt-6.7b) LLM. A pretrained 1gram language model is included in this repository at [`language_model/pretrained_language_models/openwebtext_1gram_lm_sil`](language_model/pretrained_language_models/openwebtext_1gram_lm_sil). Pretrained 3gram and 5gram language models are available for download [here](https://datadryad.org/dataset/doi:10.5061/dryad.x69p8czpq) (`languageModel.tar.gz` and `languageModel_5gram.tar.gz`). Note that the 3gram model requires ~60GB of RAM, and the 5gram model requires ~300GB of RAM. Furthermore, OPT 6.7b requires a GPU with at least ~12.4 GB of VRAM to load for inference.
+## Citations and Acknowledgments
 
-Our Kaldi-based ngram implementation requires a different version of torch than our model training pipeline, so running the ngram language models requires an additional seperate python conda environment. To create this conda environment, run the following command from the root directory of this repository. For more detailed instructions, see the README.md in the [`language_model`](language_model) subdirectory.
-```bash
-./setup_lm.sh
-```
+If you use this code or analysis in academic work, please cite:
 
-Verify it worked by activating the conda environment with the command `conda activate b2txt25_lm`.
+
+**Underlying dataset**:
+Card, N.S., Wairagkar, M., Iacobacci, C., et al. (2024).
+An Accurate and Rapidly Calibrating Speech Neuroprosthesis.
+New England Journal of Medicine, 391(7), 609-618.
+DOI: 10.1056/NEJMoa2314132
+
+**Dataset repository**:
+Verwoert, S., et al. (2022). Intracranial EEG Speech Production Dataset.
+Dryad Digital Repository. https://doi.org/10.5061/dryad.dncjsxm85
+
+
+**Acknowledgments**: This project adapts code structure from the [NEJM brain-to-text repository](https://github.com/Neuroprosthetics-Lab/nejm-brain-to-text) for the Brain-to-Text '25 competition baseline.
+
+## License
+This project is licensed under the **MIT License** – see the `LICENSE` file for details.
+
+---
+
+**Contact**: For questions about this project, please open an issue on GitHub or contact the authors.
