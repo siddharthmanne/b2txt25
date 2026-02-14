@@ -10,7 +10,6 @@ This repository contains code for quantifying neural drift in intracranial EEG (
 
 - `data/` – Download the iEEG speech production dataset from [Dryad](https://datadryad.org/dataset/doi:10.5061/dryad.dncjsxm85). More info in the README within this folder.
 - `model_training/` – Model, training, dataset, and evaluation scripts for standard GRU decoder.
-- `model_training_time_emb/` – Model, training, dataset, and evaluation scripts for time-embedding variant of GRU decoder.
 - `final_eval_metrics/` – Predicted phoneme CSV outputs and evaluation metrics.
 - `trial_counts_summary.txt` – Summary of dataset structure across sessions.
 - `requirements.txt` – Python package dependencies.
@@ -23,8 +22,7 @@ Phoneme-level decoding from intracranial EEG (iEEG) high-gamma features extracte
 
 ### Models
 
-- **Baseline GRU**: Five-layer GRU (hidden size = 768) with linear projection to 41 phoneme classes and CTC loss.
-- **Time-Embedding Variant**: Augments the GRU with sinusoidal encoding of days-since-implant to test temporal drift compensation.
+- **GRU**: Five-layer GRU (hidden size = 768) with linear projection to 41 phoneme classes and CTC loss.
 
 ### Metrics
 Phoneme error rate (PER) computed as `(S + D + I) / N`, where S = substitutions, D = deletions, I = insertions, and N = ground-truth phoneme count.
@@ -35,8 +33,6 @@ Phoneme error rate (PER) computed as `(S + D + I) / N`, where S = substitutions,
 - Batch size: 64
 - Dropout: 0.4 (GRU layers), 0.2 (input layer)
 - Gradient clipping: max norm 10
-
-Core GRU implementation is in `model_training/models.py` and `model_training_time_emb/models.py`. Training loops are in `model_training/train_model.py` and `model_training_time_emb/train_model.py`.
 
 ## Dataset
 
@@ -102,13 +98,10 @@ The `setup.sh` script is also provided for automated setup:
 ./setup.sh
 
 ## How to Run
-cd model_training or cd model_training_time_emb
+cd model_training 
 Training the model: python3 train_model.py rnn_args.yaml
 Evaluating the trained model: python3 evaluate_model.py --config_path rnn_args.yaml
 
-## Citations and Acknowledgments
-
-If you use this code or analysis in academic work, please cite:
 
 
 **Underlying dataset**:
@@ -127,6 +120,3 @@ Dryad Digital Repository. https://doi.org/10.5061/dryad.dncjsxm85
 ## License
 This project is licensed under the **MIT License** – see the `LICENSE` file for details.
 
----
-
-**Contact**: For questions about this project, please open an issue on GitHub or contact the authors.
