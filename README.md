@@ -1,7 +1,5 @@
 # Quantifying Neural Drift in Intracranial Speech Decoding
 
-A GRU-based phoneme decoder for quantifying neural data drift in long-term intracranial speech brain-computer interfaces.
-
 ## Overview
 
 This repository contains code for quantifying neural drift in intracranial EEG (iEEG) speech decoding over a 14-month period. We implement a five-layer GRU-based phoneme decoder trained with CTC loss to decode high-gamma neural features into phoneme sequences. Our analysis reveals systematic performance degradation over time, with phoneme error rate (PER) increasing linearly from ~58% in early sessions to ~74% in late sessions, demonstrating the critical challenge of neural drift in chronic brain-computer interfaces.
